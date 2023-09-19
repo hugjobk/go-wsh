@@ -1,10 +1,12 @@
 package wsh
 
 import (
+	"context"
 	"log"
 )
 
 type eBroadcast struct {
+	ctx    context.Context
 	mt     int
 	msg    []byte
 	topics []string
@@ -41,6 +43,7 @@ type Hub struct {
 	chSubscribe   chan eSubscribe
 	chUnsubscribe chan eUnsubscribe
 	chBroadcast   chan eBroadcast
+	chResponse    chan struct{} // Response after broastcasting a message to clients
 
 	logger *log.Logger
 }
@@ -54,6 +57,7 @@ func NewHub() *Hub {
 		chSubscribe:   make(chan eSubscribe),
 		chUnsubscribe: make(chan eUnsubscribe),
 		chBroadcast:   make(chan eBroadcast),
+		chResponse:    make(chan struct{}),
 		logger:        defaultLogger,
 	}
 }
@@ -62,8 +66,9 @@ func (h *Hub) SetLogger(logger *log.Logger) {
 	h.logger = logger
 }
 
-func (h *Hub) Broadcast(mt int, msg []byte, topics ...string) {
-	h.chBroadcast <- eBroadcast{mt, msg, topics}
+func (h *Hub) Broadcast(ctx context.Context, mt int, msg []byte, topics ...string) {
+	h.chBroadcast <- eBroadcast{ctx, mt, msg, topics}
+	<-h.chResponse
 }
 
 func (h *Hub) Start() {
@@ -82,7 +87,8 @@ func (h *Hub) Start() {
 			h.unsubscribe(e.client, e.topics)
 
 		case e := <-h.chBroadcast:
-			h.broadcast(e.mt, e.msg, e.topics)
+			h.broadcast(e.ctx, e.mt, e.msg, e.topics)
+			h.chResponse <- struct{}{}
 		}
 	}
 }
@@ -97,9 +103,9 @@ func (h *Hub) deregister(c *client) {
 	if !ok {
 		return
 	}
-	h.logger.Printf("wsh: unregister: %p", c)
+	h.logger.Printf("wsh: deregister: %p", c)
 	delete(h.clients, c)
-	close(c.send)
+	close(c.chSend)
 	for topicName := range c.topics {
 		t, ok := h.topics[topicName]
 		if ok {
@@ -142,27 +148,39 @@ func (h *Hub) unsubscribe(c *client, topics []string) {
 	}
 }
 
-func (h *Hub) broadcast(mt int, msg []byte, topics []string) {
+func (h *Hub) broadcast(ctx context.Context, mt int, msg []byte, topics []string) {
 	if len(topics) == 0 { // broadcast to all clients
-		h.broadcastToClients(h.clients, mt, msg)
+		h.broadcastToClients(ctx, h.clients, mt, msg)
 	} else {
 		for _, topicName := range topics {
 			t, ok := h.topics[topicName]
 			if ok {
-				h.broadcastToClients(t.clients, mt, msg)
+				h.broadcastToClients(ctx, t.clients, mt, msg)
 			}
 		}
 	}
 }
 
-func (h *Hub) broadcastToClients(clients map[*client]struct{}, mt int, msg []byte) {
+func (h *Hub) broadcastToClients(ctx context.Context, clients map[*client]struct{}, mt int, msg []byte) {
 	var invalidClients []*client
 	for c := range clients {
+		c.chSend <- message{mt, msg}
+	}
+	for c := range clients {
 		select {
-		case c.send <- message{mt, msg}:
-
+		case _, ok := <-c.chResponse:
+			if !ok {
+				invalidClients = append(invalidClients, c)
+			}
 		default:
-			invalidClients = append(invalidClients, c)
+			select {
+			case _, ok := <-c.chResponse:
+				if !ok {
+					invalidClients = append(invalidClients, c)
+				}
+			case <-ctx.Done():
+				invalidClients = append(invalidClients, c)
+			}
 		}
 	}
 	for _, c := range invalidClients {

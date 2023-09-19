@@ -31,8 +31,6 @@ const (
 	PongMessage = 10
 )
 
-const msgChannelSize = 10
-
 const (
 	defaultReadLimit  = 4096
 	defaultWriteWait  = 10 * time.Second

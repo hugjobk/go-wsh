@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -29,11 +30,11 @@ func writeToHub(hub wsh.Hub) {
 	for {
 		select {
 		case <-t1.C:
-			hub.Broadcast(wsh.TextMessage, []byte("Topic A"), "A")
+			hub.Broadcast(context.Background(), wsh.TextMessage, []byte("Topic A"), "A")
 		case <-t2.C:
-			hub.Broadcast(wsh.TextMessage, []byte("Topic B"), "B")
+			hub.Broadcast(context.Background(), wsh.TextMessage, []byte("Topic B"), "B")
 		case <-t3.C:
-			hub.Broadcast(wsh.TextMessage, []byte("All topics"))
+			hub.Broadcast(context.Background(), wsh.TextMessage, []byte("All topics"))
 		}
 	}
 }

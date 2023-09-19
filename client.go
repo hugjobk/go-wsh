@@ -17,7 +17,9 @@ type client struct {
 	hub    *Hub
 	ws     *websocket.Conn
 	topics map[string]struct{}
-	send   chan message
+
+	chSend     chan message
+	chResponse chan struct{} // Response after successfully written a message to the websocket
 
 	logger *log.Logger
 
@@ -29,6 +31,7 @@ type client struct {
 
 func (c *client) readPump() {
 	defer func() {
+		close(c.chResponse)
 		c.hub.chDeregister <- c
 		c.ws.Close()
 	}()
@@ -80,7 +83,7 @@ func (c *client) writePump() {
 
 	for {
 		select {
-		case msg, ok := <-c.send:
+		case msg, ok := <-c.chSend:
 			if !ok {
 				c.write(CloseMessage, nil)
 				return
@@ -89,6 +92,7 @@ func (c *client) writePump() {
 				c.logger.Printf("wsh: write failed: %s", err)
 				return
 			}
+			c.chResponse <- struct{}{}
 
 		case <-ticker.C:
 			if err := c.write(PingMessage, nil); err != nil {
