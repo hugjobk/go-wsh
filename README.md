@@ -14,14 +14,19 @@ go run cmd/server/main.go
 wscat -c 127.0.0.1:8080/ws
 ```
 
-## Subscribe to multiple topics
+## Subscribe to one or more topics
 
 ```
 subscribe A B
 ```
 
-## Unsubscribe a topic
+## Unsubscribe from one or more topics
 
 ```
 unsubscribe B
+```
+
+## Unsubscribe from all topics
+```
+unsubscribe
 ```
