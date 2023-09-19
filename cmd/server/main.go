@@ -14,7 +14,7 @@ func main() {
 
 	go hub.Start()
 
-	go writeToHub(*hub)
+	go writeToHub(hub)
 
 	http.Handle("/ws", wsHandler)
 
@@ -23,7 +23,7 @@ func main() {
 	}
 }
 
-func writeToHub(hub wsh.Hub) {
+func writeToHub(hub *wsh.Hub) {
 	t1 := time.NewTicker(1 * time.Second)
 	t2 := time.NewTicker(2 * time.Second)
 	t3 := time.NewTicker(4 * time.Second)
